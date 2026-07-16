@@ -18,7 +18,11 @@
 
 ---
 
-<img src="images/AmbienZ_UI.png" width="600" alt="AmbienZ UI">
+<div align="center">
+  <img src="images/AmbienZ_UI.png" width="600" alt="AmbienZ UI">
+  <br/>
+  <em>(Optional: Replace with an animated GIF `images/AmbienZ_demo.gif` to showcase the dynamic light syncing in action)</em>
+</div>
 
 </div>
 
