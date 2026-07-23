@@ -1,11 +1,32 @@
 {
-  "bulb_ips": ["192.168.0.100"],
-  "monitor_idx": 1,
-  "fps": 40,
-  "brightness": 100,
+  "bulb_ips": [
+    "192.168.0.100"
+  ],
+  "fps": 60,
+  "brightness": 88,
   "saturation": 14,
-  "smoothness": 60,
-  "gamma": 10,
+  "smoothness": 57,
+  "gamma": 8,
   "kelvin": 6500,
-  "mode": "Dominant"
+  "mode": "Dominant",
+  "monitor_idx": 1,
+  "schedules": [
+    {
+      "time": "11:18",
+      "action": "Start Sync",
+      "enabled": true
+    },
+    {
+      "time": "11:18",
+      "action": "Start Sync",
+      "enabled": true
+    },
+    {
+      "time": "11:18",
+      "action": "Start Sync",
+      "enabled": true
+    }
+  ],
+  "static_color": "#ffffff",
+  "effect": "None"
 }

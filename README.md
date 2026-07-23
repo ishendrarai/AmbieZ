@@ -35,9 +35,12 @@
 | 🎨 **3 Color Algorithms**        | Histogram Dominant, Average, and Edge-Weighted color extraction                    |
 | 🌊 **Adaptive Smoothing**        | Configurable exponential smoothing to prevent jarring flicker                      |
 | 💡 **Multi-Bulb Sync**           | Add multiple WiZ bulb IPs — all receive the same color simultaneously              |
+| 🔍 **Auto-Discovery**            | Click Scan to automatically find and add WiZ bulbs on your local network           |
+| 🌟 **Dynamic Effects**           | Apply Candle Flicker, Pulse, or Breathe effects mathematically over live colors    |
+| ⏰ **Scheduling**                | Set a time to automatically start or stop the screen sync                          |
 | 🎮 **Adjustable FPS**            | Slider to control capture rate from 10 to 60 FPS                                  |
 | 🎛️ **Gamma Correction**          | Per-session gamma slider (0.8–2.2) for accurate perceptual brightness              |
-| 🌡️ **Color Temperature**         | Kelvin slider (1 000–20 000 K) adjusts the white-point in linear RGB space        |
+| 🌡️ **Color Temperature**         | Kelvin slider (1 000–20 000 K) adjusts the white-point in linear RGB space         |
 | ⚡ **Frame-Skip Optimisation**   | Skips UDP sends when color change is below threshold — reduces flicker             |
 | 🖥️ **Dark Modern UI**            | PySide6 GUI with live color preview, status dot, and real-time RGB readout         |
 | 🖥️ **Multi-Monitor**             | Select which display to capture from a dropdown                                    |
@@ -70,8 +73,8 @@ cd AmbienZ
 
 ```bash
 python -m venv .venv
-# Windows:
-.venv\Scripts\activate
+# Windows (PowerShell/CMD):
+.\.venv\Scripts\activate
 # macOS/Linux:
 source .venv/bin/activate
 
@@ -92,17 +95,18 @@ python AmbienZ.py
 
 ### First-time setup
 
-1. **Add your bulb(s)** — Type the IP address of each WiZ bulb into the **Bulbs** field and click **+ Add** (e.g. `192.168.0.100`). Repeat for every bulb you want to sync.
+1. **Add your bulb(s)** — Type the IP address of each WiZ bulb into the **Bulbs** field and click **+ Add** (e.g. `192.168.0.100`), or simply click **🔍 Scan (Auto)** to detect them automatically.
 2. **Select your monitor** — Pick the display you want to capture from the dropdown.
-3. **Tune your settings** — Adjust FPS, brightness, saturation, gamma, color temperature, smoothing, and extraction mode.
+3. **Tune your settings** — Adjust FPS, brightness, saturation, gamma, color temperature, dynamic effects, smoothing, and extraction mode.
 4. **Click START SYNC** — All bulbs will immediately begin mirroring your screen.
 
 ### Controls overview
 
 | Control               | What it does                                                                           |
 | --------------------- | -------------------------------------------------------------------------------------- |
-| **Bulbs list**        | Add or remove WiZ bulb IPs. All listed bulbs receive every color update.               |
+| **Bulbs list**        | Add/remove IPs manually, or use **Scan (Auto)** to detect WiZ bulbs automatically.     |
 | **Select Monitor**    | Choose which display to capture (all connected monitors listed)                        |
+| **Dynamic Effect**    | Applies mathematical effects over the screen colors: Candle Flicker, Pulse, or Breathe.|
 | **FPS**               | Sets how many frames per second the sync loop targets (10–60)                          |
 | **Max Brightness**    | Sets the `dimming` value sent to the bulb (10–100%)                                    |
 | **Saturation Boost**  | Multiplies color saturation for more vivid output (1.0–3.0×)                           |
@@ -110,6 +114,7 @@ python AmbienZ.py
 | **Color Temp**        | White-point adjustment in Kelvin (1 000 K = warm amber · 6 500 K = neutral · 20 000 K = cool blue) |
 | **Smoothing**         | Controls temporal smoothing between frames (0 = instant, 0.99 = very slow)             |
 | **Extraction Mode**   | Algorithm used to pick the screen color                                                |
+| **Schedule**          | Enable an automatic trigger to Start Sync or Stop Sync at a specific time.             |
 | **START / STOP SYNC** | Toggle the live sync loop on or off                                                    |
 
 ---
@@ -143,22 +148,30 @@ Settings are auto-saved to `ambienz_config.json` next to `AmbienZ.py` whenever t
 | `saturation`  | Saturation multiplier (stored as slider integer, divided by 10 on use)                 |
 | `smoothness`  | Smoothing factor (stored as 0–99, divided by 100 on use)                               |
 | `gamma`       | Gamma exponent (stored as slider integer, divided by 10 on use)                        |
-| `kelvin`      | Color temperature in Kelvin (1 000–20 000). Stored and used as-is. Default: 6 500 K   |
+| `kelvin`      | Color temperature in Kelvin (1 000–20 000). Stored and used as-is. Default: 6 500 K    |
 | `mode`        | Extraction algorithm: `Dominant`, `Average`, or `Edge Weighted`                        |
+| `effect`      | Active dynamic effect (e.g. `None`, `Candle Flicker`, `Pulse`, `Breathe`)              |
+| `schedule_*`  | Configuration for Time-Based Scheduling                                                |
 
 ### Example `ambienz_config.json`
 
 ```json
 {
-  "bulb_ips": ["192.168.0.100"],
-  "monitor_idx": 1,
+  "bulb_ips": [
+    "192.168.0.100"
+  ],
   "fps": 40,
   "brightness": 100,
   "saturation": 14,
   "smoothness": 60,
   "gamma": 10,
   "kelvin": 6500,
-  "mode": "Dominant"
+  "mode": "Dominant",
+  "monitor_idx": 1,
+  "schedule_time": "19:00",
+  "schedule_action": "Start Sync",
+  "schedule_enabled": true,
+  "effect": "None"
 }
 ```
 
@@ -166,7 +179,7 @@ Settings are auto-saved to `ambienz_config.json` next to `AmbienZ.py` whenever t
 
 ## 🧠 How It Works
 
-AmbienZ runs a high-frequency capture loop in a background QThread:
+AmbienZ's logic is cleanly separated into specialized modules (`engine.py`, `effects.py`, `config.py`, `gui.py`). The core sync engine runs a high-frequency capture loop in a background `QThread`:
 
 ```
 Screen Frame (mss)
@@ -175,13 +188,13 @@ Screen Frame (mss)
 Resize to 160×90          (fast, low-memory processing)
       │
       ▼
-Crop black bars           (threshold-based edge detection)
+Crop black bars           (threshold-based edge detection, cached for performance)
+      │
+      ▼
+Linear RGB conversion     (via global precomputed LINEAR_LUT for speed & physical accuracy)
       │
       ▼
 Color extraction          (Histogram Dominant / Average / Edge Weighted)
-      │
-      ▼
-Linear RGB conversion     (sRGB → linear, γ=2.2)
       │
       ▼
 Gamma correction          (user-adjustable exponent, 0.8–2.2)
@@ -190,28 +203,30 @@ Gamma correction          (user-adjustable exponent, 0.8–2.2)
 Saturation boost          (scaled in linear RGB space)
       │
       ▼
-Color temperature         (Kelvin white-point via Tanner Helland piecewise fit,
-                           normalised to D65 / 6 500 K, applied in linear light)
+Color temperature         (Kelvin white-point via Tanner Helland piecewise fit)
       │
       ▼
 Exponential smoothing     (blends current frame with previous)
       │
       ▼
-Frame-skip check          (skip if Δcolor < threshold)
+Dynamic Effects           (Flicker/Pulse/Breathe applied via mathematical modulation)
+      │
+      ▼
+Frame-skip check          (skip if Δcolor or Δbrightness < threshold)
       │
       ▼
 UDP → WiZ Bulb(s)         (setPilot JSON over port 38899, all IPs)
 ```
 
-The WiZ protocol is a simple JSON-over-UDP API on port `38899`. No cloud required.
+The WiZ protocol is a simple JSON-over-UDP API on port `38899`. No cloud required. Auto-Discovery broadcasts a `getSystemConfig` request over UDP to find bulbs without needing manual IP entry.
 
-### Color Temperature module (`color_temperature.py`)
+### Modules Breakdown
 
-The standalone `color_temperature.py` module provides the white-point math:
-
-- **`kelvin_to_multipliers(kelvin)`** — returns `(r_mul, g_mul, b_mul)` normalised to 1.0 at 6 500 K (D65). Used directly by the sync loop.
-- **`adjust_color_temperature(image, kelvin)`** — full image adjustment pipeline with gamma encode/decode. Useful for batch processing.
-- **`build_kelvin_lut()`** / **`lut_lookup()`** — pre-computed LUT with linear interpolation for tight loops.
+- **`AmbienZ.py` / `style.qss`** — PySide6 GUI with dark styling and tray integration.
+- **`engine.py`** — The threaded `SyncWorker` managing the real-time pipeline, network loop, and LUT conversions.
+- **`config.py`** — Safe configuration parsing using `dataclasses`.
+- **`effects.py`** — Dynamic math modifiers driven by `time.perf_counter()`.
+- **`color_temperature.py`** — White-point algorithms mapped to D65.
 
 ---
 
@@ -317,7 +332,11 @@ Contributions are welcome!
 ```bash
 git clone https://github.com/ishendrarai/AmbienZ.git
 cd AmbienZ
-python -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\activate
+python -m venv .venv
+# Windows:
+.\.venv\Scripts\activate
+# macOS/Linux:
+source .venv/bin/activate
 pip install -r requirements.txt
 python AmbienZ.py   # verify the app launches correctly before making changes
 ```
